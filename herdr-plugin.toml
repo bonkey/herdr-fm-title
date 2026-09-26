@@ -1,0 +1,28 @@
+id = "bonkey.fm-title"
+name = "Agent session titles"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+description = "Names each agent session from its first prompt with Apple's on-device model; the title reaches the tab via auto-title and, where supported, the agent's own session name."
+platforms = ["macos"]
+
+# Keeps connected agents on the current runtime after plugin updates; never connects new ones.
+[[startup]]
+command = ["sh", "scripts/install.sh", "--sync"]
+
+[[actions]]
+id = "install"
+title = "Connect agents (Claude Code, Codex, OpenCode)"
+contexts = ["workspace"]
+command = ["sh", "scripts/install.sh"]
+
+[[actions]]
+id = "uninstall"
+title = "Disconnect agents"
+contexts = ["workspace"]
+command = ["sh", "scripts/uninstall.sh"]
+
+[[actions]]
+id = "status"
+title = "Show agent connections and model backend"
+contexts = ["workspace"]
+command = ["sh", "scripts/status.sh"]
