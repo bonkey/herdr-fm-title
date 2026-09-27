@@ -1,9 +1,12 @@
 #!/bin/sh
 # Offline tests for the runtime and the plugin scripts. Needs jq; no herdr, agents or model.
 # PATH is a directory of symlinks to basic tools plus shims, so each case controls whether
-# fm, swiftc and herdr exist.
+# fm, swiftc and herdr exist. The Python parts run on HERDR_FM_TITLE_PYTHON, by default the 3.9
+# behind /usr/bin/python3, the oldest one the runtime supports.
 set -u
 repo=$(cd "$(dirname "$0")/.." && pwd -P)
+HERDR_FM_TITLE_PYTHON=$("${HERDR_FM_TITLE_PYTHON:-/usr/bin/python3}" -c 'import sys; print(sys.executable)') || exit 1
+export HERDR_FM_TITLE_PYTHON
 T=$(mktemp -d "${TMPDIR:-/tmp}/herdr-fm-title-test.XXXXXX")
 trap 'rm -rf "$T"' EXIT
 pass=0 fail=0
