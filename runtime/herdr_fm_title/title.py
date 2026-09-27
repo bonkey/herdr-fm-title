@@ -20,6 +20,8 @@ import unicodedata
 from . import common, prefilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+# Structured output {title, ticket}, for when the text holds keys that may be tickets.
+SCHEMA = os.path.join(ROOT, "ticket-schema.json")
 TIMEOUT = 8  # seconds; Claude gives the whole prompt hook 10
 
 MODES = ("slug", "title")
@@ -88,16 +90,18 @@ def build_swift(swift_bin):
                    "_", swift_bin, os.path.join(ROOT, "title.swift"), lock])
 
 
-def backend(instructions):
-    """The command that answers the instructions for the text on its stdin, or None."""
+def backend(instructions, schema):
+    """The command that answers the instructions for the text on its stdin, with a JSON reply of
+    the given schema file when there is one; or None."""
+    extra = ["--schema", schema] if schema else []
     override = common.env("HERDR_FM_TITLE_BACKEND")
     if override:
-        return [override, "-i", instructions]
+        return [override, "-i", instructions] + extra
     if shutil.which("fm") and succeeds(["fm", "available"]):
-        return ["fm", "respond", "-i", instructions, "--no-stream", "-g"]
+        return ["fm", "respond", "-i", instructions, "--no-stream", "-g"] + extra
     swift_bin = os.path.join(common.cache_dir(), "bin", "title")
     if os.access(swift_bin, os.X_OK) and not newer(os.path.join(ROOT, "title.swift"), swift_bin):
-        return [swift_bin, "-i", instructions]
+        return [swift_bin, "-i", instructions] + extra
     if shutil.which("swiftc"):
         build_swift(swift_bin)
     return None
@@ -137,11 +141,13 @@ def slugify(title):
     return slug or (words[0][:SLUG_CHARS] if words else "")
 
 
-def generate(text, words):
-    """The title for prepared text, asking for at most `words` words, or None."""
-    command = backend(INSTR % words)
+def generate(text, words, candidates):
+    """(title, ticket) for prepared text, asking for at most `words` words; title None on failure.
+    With candidate keys, the model also names the ticket. It counts only if it is one of them,
+    because the model sometimes invents one."""
+    command = backend(INSTR % words, SCHEMA if candidates else None)
     if not command:
-        return None
+        return None, None
     # The prompt goes in quoted, so the small model summarizes it instead of obeying requests in
     # it ("just reply with ok").
     try:
@@ -150,11 +156,20 @@ def generate(text, words):
                                timeout=TIMEOUT, check=True).stdout
     except (OSError, subprocess.SubprocessError):
         common.log("fm-title", "backend failed: " + command[0])
-        return None
-    title = clean(reply.decode("utf-8", "replace"))
+        return None, None
+    reply, ticket = reply.decode("utf-8", "replace"), None
+    if candidates:
+        try:
+            result = json.loads(reply)
+        except ValueError:
+            result = None
+        if isinstance(result, dict) and isinstance(result.get("title"), str):
+            reply = result["title"]
+            ticket = result.get("ticket") if result.get("ticket") in candidates else None
+    title = clean(reply)
     if not title:
         common.log("fm-title", "empty reply from " + command[0])
-    return title or None
+    return title or None, ticket
 
 
 def configured_mode():
@@ -183,13 +198,13 @@ def title_for(prompt, mode=None):
     under 3 words wait for the next one, unless a ticket URL alone names the session."""
     mode = mode or configured_mode()
     prepared = prefilter.prepare(prompt)
-    if len(prepared.text.split()) < 3:
-        title = ""
-    else:
-        title = generate(prepared.text, WORDS[mode])
+    title, ticket = "", prepared.ticket
+    if len(prepared.text.split()) >= 3:
+        title, picked = generate(prepared.text, WORDS[mode], prepared.candidates)
         if not title:
             return None
-    return name(title, prepared.ticket, mode) or None
+        ticket = ticket or picked
+    return name(title, ticket, mode) or None
 
 
 def main(args):

@@ -38,5 +38,20 @@ class UrlTickets(unittest.TestCase):
                 self.assertEqual(prefilter.prepare(prompt).text, want)
 
 
+class BareKeys(unittest.TestCase):
+    def test_candidates(self):
+        for prompt, want in [
+            ("fix ENG-42 crash when parsing UTF-8 input", ["ENG-42"]),
+            ("the ECMA-262 flag, see ABC-1234 and ABC-1234, then PLAT-9", ["ABC-1234", "PLAT-9"]),
+            ("switch to SHA-256 and ISO-8601 for CVE-2024-1234 on X86-64", []),
+            ("update JSR-310 dates, the USB-3 driver and SQL-92 joins for SOC-2", []),
+            ("the notes in src/ENG-42.md are stale", ["ENG-42"]),
+            ("rebase feature/eng-42-login on main", []),
+            ("see https://linear.app/a/issue/ENG-1/x and ENG-2", []),
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertEqual(prefilter.prepare(prompt).candidates, want)
+
+
 if __name__ == "__main__":
     unittest.main()

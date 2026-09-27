@@ -147,6 +147,19 @@ check "fm-title: a GitHub issue or PR URL prefixes repo#number" t_url_github
 check "fm-title: a ticket URL with too little text names the session after the ticket" t_url_only
 check "fm-title: a URL without a ticket is dropped like any other" t_url_plain
 check "fm-title: the ticket is not repeated when the model echoes it" t_ticket_echo
+BARE='fix ENG-42 crash when parsing UTF-8 input on login'
+t_bare_schema() { reset; use_stub; out=$(STUB_REPLY='{"title": "Login UTF-8 Parsing Fix", "ticket": "ENG-42"}' fm_title "$BARE") &&
+  eq "$out" "eng-42-login-utf-8-parsing" && grep -q -- "--schema $repo/runtime/ticket-schema.json" "$T/stub.args"; }
+t_bare_guard() { reset; use_stub; eq "$(STUB_REPLY='{"title": "Node Upgrade Key Fix", "ticket": "ENG-7"}' fm_title 'bump node to 22 and fix the PLAT-9 key loading')" "node-upgrade-key"; }
+t_bare_none() { reset; use_stub; eq "$(STUB_REPLY='{"ticket": "", "title": "Cache Hashing Change"}' fm_title 'fix the LOGIN-2 cache hashing' --mode title)" "Cache Hashing Change"; }
+t_bare_plain() { reset; use_stub; eq "$(STUB_REPLY='Login Crash Fix' fm_title "$BARE")" "login-crash-fix"; }
+t_no_candidates() { reset; use_stub; fm_title 'switch hashing from MD5 to SHA-256 in the cache layer' >/dev/null &&
+  ! grep -q -- --schema "$T/stub.args" && fm_title "$LINEAR ENG-7" >/dev/null && ! grep -q -- --schema "$T/stub.args"; }
+check "fm-title: with a bare key the model picks the ticket through the schema" t_bare_schema
+check "fm-title: a ticket the model invents is ignored" t_bare_guard
+check "fm-title: the model may find no ticket among the keys" t_bare_none
+check "fm-title: a reply that isn't JSON is a plain title" t_bare_plain
+check "fm-title: no schema without bare keys, or with a URL ticket" t_no_candidates
 
 # --- fm-title: backend order -----------------------------------------------------------------
 fm_shim() { # fm_shim available|unavailable

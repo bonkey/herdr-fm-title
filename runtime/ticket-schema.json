@@ -1,0 +1,22 @@
+{
+  "required" : [
+    "title",
+    "ticket"
+  ],
+  "type" : "object",
+  "properties" : {
+    "ticket" : {
+      "type" : "string",
+      "description" : "The issue-tracker key the task refers to, copied exactly as written, or an empty string when there is none. Names of encodings, hashes, standards, versions or models, such as UTF-8, SHA-256, ISO-8601, RSA-2048 or GPT-5, are never tickets."
+    },
+    "title" : {
+      "type" : "string"
+    }
+  },
+  "x-order" : [
+    "title",
+    "ticket"
+  ],
+  "additionalProperties" : false,
+  "title" : "Result"
+}

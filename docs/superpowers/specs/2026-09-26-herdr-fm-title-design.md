@@ -186,7 +186,8 @@ The mode applies everywhere the title goes: tab, Claude's `sessionTitle`, OpenCo
    - remove URLs (`http://` or `https://`, up to whitespace or `<>"'`, without trailing `).,`), with the `<>` or `()` around them, so `[text](url)` keeps `text`. The first URL that names a ticket gives **the ticket**:
      - a GitHub issue or pull request, `github.com/<owner>/<repo>/(issues|pull)/<n>`, gives `repo#n`;
      - any other URL gives its first path segment or query value that is a key like `ENG-42` (`[A-Z][A-Z0-9]{1,9}-[0-9]+`). This covers Linear `/issue/ENG-42/…`, Jira `/browse/PROJ-7` or `?selectedIssue=PROJ-7`, YouTrack and similar;
-     - keys whose prefix names an encoding, hash, standard or model are no tickets: UTF, UCS, SHA, MD, CRC, ISO, IEC, IEEE, RFC, CVE, CWE, GPT, AES, RSA, DES, ECMA, ES, HTTP, TLS, SSL, COVID, WCAG, PEP, BASE, X86, ARM;
+     - keys whose prefix names an encoding, hash, standard, spec or model are no tickets: UTF, UCS, SHA, MD, CRC, ISO, IEC, IEEE, RFC, CVE, CWE, GPT, AES, RSA, DES, ECMA, ES, HTTP, TLS, SSL, COVID, WCAG, PEP, JSR, JEP, BASE, X86, ARM, USB, WPA, SQL, SOC, FIPS, NIST;
+   - without a URL ticket, the keys left in the text (`\b[A-Z][A-Z0-9]{1,9}-[0-9]+\b`, not on that list) are **candidates**, for the model to judge (step 2);
    - collapse whitespace and cut to 1500 characters;
    - fewer than 3 words → the ticket alone is the name, with no model call; without a ticket, exit 1.
 
@@ -194,6 +195,13 @@ The mode applies everywhere the title goes: tab, Claude's `sessionTitle`, OpenCo
 2. **Pick the backend**, using the first that works:
    1. **`fm`**, when `command -v fm` succeeds and `fm available` exits 0: `fm respond -i "$INSTR" --no-stream -g`. The text goes on stdin quoted, as `Task:` followed by the text between `"""` lines, so the model summarizes it instead of obeying requests in it.
    2. **`${XDG_CACHE_HOME:-~/.cache}/herdr-fm-title/bin/title`**, compiled from `title.swift`. It uses the same interface: `-i INSTR`, text on stdin, reply on stdout, exit 2 when the model is unavailable.
+
+   With candidates, the backend also gets `--schema ticket-schema.json`, a structured-output schema made with `fm schema object`, and replies `{"title": …, "ticket": …}`. The schema asks for the key the task refers to and says that names of encodings, hashes, standards, versions or models are never tickets.
+   - The model's ticket counts only if it is one of the candidates: in probes it invented `ENG-42`, copied from an example key in an earlier schema. The schema names no example key.
+   - A reply that isn't that JSON is taken as a plain title with no ticket.
+   - Without candidates, the call is the plain one, so most titles don't depend on the schema.
+
+   Probe on 12 prompts: ENG-42, PROJ-7, ABC-1234 and IOS-1234 were found, and SHA-256, GPT-5, COVID-19, M2-4 and VP9-2 were not. The model took JSR-310 for a ticket, which is why JSR is on the list.
    3. **None** → exit 1.
 
    `HERDR_FM_TITLE_BACKEND` overrides the backend command. It exists for tests.
@@ -331,6 +339,7 @@ herdr-fm-title/
   runtime/bin/{fm-title,hook,herdr-title}  # sh trampolines to runtime/main.py
   runtime/main.py            # entry point: never exits 2
   runtime/herdr_fm_title/    # common, prefilter, title (prompt → title), herdr (title → herdr), hook
+  runtime/ticket-schema.json # structured output {title, ticket}
   runtime/title.swift        # Swift fallback backend
   runtime/opencode/index.js  # OpenCode server half
   runtime/opencode/tui.js    # OpenCode TUI half

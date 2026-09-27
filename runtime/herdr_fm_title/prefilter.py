@@ -14,12 +14,15 @@ MAX_CHARS = 1500
 URL = re.compile(r"<https?://[^\s<>\"']+>|\(?https?://[^\s<>\"']+", re.ASCII)
 URL_TRAILER = ").,"
 KEY = re.compile(r"[A-Z][A-Z0-9]{1,9}-[0-9]+\Z")
-# Prefixes of names that look like ticket keys: encodings, hashes, standards, models.
+BARE_KEY = re.compile(r"\b[A-Z][A-Z0-9]{1,9}-[0-9]+\b", re.ASCII)
+# Prefixes of names that look like ticket keys: encodings, hashes, standards, specs, models. The
+# model judges the rest, and missed JSR-310.
 NOT_TICKETS = frozenset("UTF UCS SHA MD CRC ISO IEC IEEE RFC CVE CWE GPT AES RSA DES ECMA ES HTTP TLS "
-                        "SSL COVID WCAG PEP BASE X86 ARM".split())
+                        "SSL COVID WCAG PEP JSR JEP BASE X86 ARM USB WPA SQL SOC FIPS NIST".split())
 GITHUB_ISSUE = re.compile(r"/[^/]+/([^/]+)/(?:issues|pull)/([0-9]+)(?:/|\Z)")
 
-Prepared = collections.namedtuple("Prepared", "text ticket")
+# ticket: from a URL, or None. candidates: without one, the keys in the text, for the model to judge.
+Prepared = collections.namedtuple("Prepared", "text ticket candidates")
 
 
 def drop_pasted(text):
@@ -56,7 +59,8 @@ def url_ticket(url):
 
 def prepare(raw):
     """Pasted blocks and URLs go, whitespace collapses, a slash command keeps its arguments, and
-    the text is cut to 1500 characters. The ticket comes from the first URL that has one."""
+    the text is cut to 1500 characters. The ticket comes from the first URL that has one; without
+    one, the keys left in the text are candidates."""
     text = SPACE.sub(" ", drop_pasted(raw)).strip(" ")
     text = SLASH_COMMAND.sub("", text, count=1)
     tickets = []
@@ -75,4 +79,7 @@ def prepare(raw):
             return rest[1:]
         return "(" * opened + rest
     text = SPACE.sub(" ", URL.sub(drop_url, text)).strip(" ")
-    return Prepared(text[:MAX_CHARS], next((t for t in tickets if t), None))
+    text = text[:MAX_CHARS]
+    ticket = next((t for t in tickets if t), None)
+    candidates = [] if ticket else [k for k in dict.fromkeys(BARE_KEY.findall(text)) if is_key(k)]
+    return Prepared(text, ticket, candidates)

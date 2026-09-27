@@ -15,8 +15,9 @@ where the agent supports it, the agent's own session name.
 
 The prompt never leaves the machine. URLs are left out of what the model reads, but a ticket URL
 names the ticket: a Linear, Jira or similar link to `ENG-42` gives `eng-42-…`, a GitHub issue or
-pull request gives `repo-12-…`. Prompts under 3 words wait for the next one, unless they carry a
-ticket URL, which then names the session on its own.
+pull request gives `repo-12-…`. A key like `ENG-42` written in the prompt counts too, when the model
+agrees it is a ticket and not a name like `UTF-8` or `SHA-256`. Prompts under 3 words wait for the
+next one, unless they carry a ticket URL, which then names the session on its own.
 
 ## Requirements
 
