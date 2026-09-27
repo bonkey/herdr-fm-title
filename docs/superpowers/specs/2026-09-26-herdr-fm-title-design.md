@@ -21,7 +21,7 @@ herdr is the source and owner of everything. The plugin is installed with `herdr
 - **macOS with Apple Intelligence enabled.** The title comes from either:
   - the `fm` CLI (macOS 27 and later; accept its terms once with `sudo fm license`), or
   - Xcode Command Line Tools, which provide `swiftc` for the Swift fallback (macOS 26 and later).
-- **herdr ≥ 0.9.1,** plus `jq`.
+- **herdr ≥ 0.9.1,** plus Python ≥ 3.9, which the Xcode Command Line Tools provide.
 - **[herdr-auto-title](https://github.com/kryptamine/herdr-auto-title) for the tab label.** herdr itself labels tabs by position. Without auto-title, the title appears only where herdr shows pane metadata titles, such as the navigator.
 
 ## Verified facts this design rests on
@@ -70,6 +70,19 @@ Agents run a copy of the runtime at a stable path rather than herdr's managed pl
 - agents keep a working copy while herdr updates the plugin;
 - a hook left behind by an incomplete uninstall still works instead of failing on every prompt.
 
+### Language
+
+The logic is Python, standard library only, and runs on 3.9, the version the Xcode Command Line Tools ship. The entry points that agents and herdr call stay small POSIX sh trampolines at fixed paths: `runtime/bin/{fm-title,hook,herdr-title}` and `scripts/{install,uninstall,status}.sh`.
+
+- **Why sh.** When Python can't run a file, it exits 2. Claude reads a prompt hook's exit 2 as "block this prompt" and erases it. A trampoline checks the interpreter first and does nothing when it is missing: `hook` and `herdr-title` exit 0, `fm-title` exits 1. It also keeps the registered hook commands stable.
+- **Which Python.**
+  - The scripts run on the first working 3.9+ of: `HERDR_FM_TITLE_PYTHON`, the Command Line Tools' `python3`, `$(xcode-select -p)/usr/bin/python3`, then Homebrew's.
+  - `/usr/bin/python3` is never used, because without developer tools it opens an install dialog.
+  - `install` pins that interpreter for the runtime in `<data>/python`, so a project's pyenv, mise or venv never decides which Python a hook gets.
+- **How it runs.** Runtime trampolines run `python -I -S -X pycache_prefix=<cache>/pycache`:
+  - `-I -S` isolates it from `PYTHONPATH`, user site-packages and `.pth` files;
+  - the pycache prefix brings the 3.9 startup down to about 20 ms.
+
 ## The herdr plugin
 
 ### Manifest
@@ -106,7 +119,7 @@ command = ["sh", "scripts/status.sh"]
 
 ### `install` action
 
-1. **Deploy** `runtime/` to the data directory. It copies into a temporary sibling directory, then renames that into place, so a hook never sees a half-written runtime.
+1. **Deploy** `runtime/` to the data directory, with `<data>/python` naming the interpreter. It copies into a temporary sibling directory, then renames that into place, so a hook never sees a half-written runtime.
 2. **Pick the agents** to connect. By default these are the supported agents whose config directory exists:
    - `${CLAUDE_CONFIG_DIR:-~/.claude}`
    - `${CODEX_HOME:-~/.codex}`
@@ -118,7 +131,8 @@ command = ["sh", "scripts/status.sh"]
    - **Codex:** in `hooks.json`, add a `UserPromptSubmit` entry, `"async": true`, running `sh '<data>/bin/hook' codex`. Also make sure `config.toml` has `[features] hooks = true`: if a `[features]` table exists, add the key there, otherwise append the table.
    - **OpenCode:** create the symlink `plugins/herdr-fm-title` → `<data>/opencode`.
 4. **Write safely.**
-   - Each JSON or TOML file is written atomically (temporary file, then `mv`).
+   - Each JSON or TOML file is written atomically (temporary file, then rename), keeping its mode. A symlinked file is written through its target.
+   - A JSON file is written only when its content changes, so a startup sync doesn't touch an agent's settings. It is formatted the way `jq .` formats it.
    - Before the first change to a file, it is backed up to `<file>.bak-herdr-fm-title`.
    - A file that doesn't parse is left untouched and reported as an error.
 5. **Record** the connected agents in `$HERDR_PLUGIN_STATE_DIR/agents`.
@@ -275,7 +289,7 @@ An agent qualifies when it can run code on prompt submit with access to the prom
    3. Calls `bin/herdr-title <agent> <title>` with herdr's label for that agent.
    4. Optionally sets the agent's own session name, and forwards later renames.
    5. Never adds output to the model's context, and never blocks the agent for longer than a first-prompt title takes.
-2. **Registration.** Add the agent to `scripts/lib.sh`: how to detect its config directory, and how to register and unregister it idempotently. `install`, `uninstall`, `status` and startup sync pick it up from there.
+2. **Registration.** Add the agent to `scripts/lib.py`: how to detect its config directory, and how to register and unregister it idempotently. `install`, `uninstall`, `status` and startup sync pick it up from there.
 
 Research notes for the next candidates, checked 2026-09-26:
 
@@ -287,13 +301,13 @@ Research notes for the next candidates, checked 2026-09-26:
 ```
 herdr-fm-title/
   herdr-plugin.toml
-  scripts/lib.sh             # paths, agent table, idempotent JSON/TOML/symlink edits
-  scripts/install.sh         # action "install" and startup "--sync"
-  scripts/uninstall.sh       # action "uninstall"
-  scripts/status.sh          # action "status"
-  runtime/bin/fm-title       # core: prompt → title
-  runtime/bin/herdr-title    # core: title → herdr
-  runtime/bin/hook           # hook adapter: claude | codex
+  scripts/{install,uninstall,status}.sh   # sh trampolines for the actions and startup "--sync"
+  scripts/lib.sh             # picks the interpreter, runs scripts/<action>.py
+  scripts/lib.py             # paths, agent table, idempotent JSON/TOML/symlink edits
+  scripts/{install,uninstall,status}.py
+  runtime/bin/{fm-title,hook,herdr-title}  # sh trampolines to runtime/main.py
+  runtime/main.py            # entry point: never exits 2
+  runtime/herdr_fm_title/    # common, prefilter, title (prompt → title), herdr (title → herdr), hook
   runtime/title.swift        # Swift fallback backend
   runtime/opencode/index.js  # OpenCode server half
   runtime/opencode/tui.js    # OpenCode TUI half
@@ -303,7 +317,7 @@ herdr-fm-title/
   LICENSE                    # MIT
 ```
 
-Dependencies are POSIX sh, `jq`, and `fm` or Swift. The OpenCode half runs inside OpenCode's own runtime.
+Dependencies are Python ≥ 3.9 (standard library only), and `fm` or Swift. The OpenCode half runs inside OpenCode's own runtime. The tests also need `jq`.
 
 ## Testing
 
@@ -311,7 +325,8 @@ Dependencies are POSIX sh, `jq`, and `fm` or Swift. The OpenCode half runs insid
 
 - a stub backend (`HERDR_FM_TITLE_BACKEND`);
 - `herdr` and `fm` shims on PATH that record their arguments;
-- temporary `HOME` and XDG directories.
+- temporary `HOME` and XDG directories;
+- the Python parts on `HERDR_FM_TITLE_PYTHON`, by default the 3.9 behind `/usr/bin/python3`, the oldest supported. Run it again with a newer interpreter.
 
 Cases:
 

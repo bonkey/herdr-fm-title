@@ -291,7 +291,7 @@ t_uninstall() {
 }
 t_status() {
   reset; claude_settings; mkdir -p "$XDG_CONFIG_HOME/opencode"; plugin install && plugin status || return 1
-  grep -q 'claude: connected; codex: not installed; opencode: connected; model: none' "$T/plugin.out"
+  grep -qF "claude: connected; codex: not installed; opencode: connected; python: $HERDR_FM_TITLE_PYTHON; model: none" "$T/plugin.out"
 }
 t_status_fm() { reset; fm_shim available; plugin status && grep -q 'model: fm$' "$T/plugin.out"; }
 t_i_empty_event() { reset; mkdir -p "$HOME/.claude"
@@ -302,6 +302,17 @@ t_u_untouched() { reset; mkdir -p "$HOME/.claude"; printf '{"hooks":{"Stop":[]}}
   plugin uninstall && cmp -s "$HOME/.claude/settings.json" "$T/orig" && [ ! "$HOME/.claude/settings.json" -nt "$T/orig" ]; }
 t_i_codex_false() { reset; mkdir -p "$HOME/.codex"; printf '[features]\nhooks = false\n' >"$HOME/.codex/config.toml"; cp "$HOME/.codex/config.toml" "$T/orig"
   plugin install && cmp -s "$HOME/.codex/config.toml" "$T/orig" && plugin status && grep -q 'codex: connected, but hooks are off' "$T/plugin.out"; }
+t_i_unchanged() { reset; claude_settings; plugin install || return 1
+  f=$HOME/.claude/settings.json; touch -t 200001010000 "$f"; cp -p "$f" "$T/orig"
+  plugin install --sync && cmp -s "$f" "$T/orig" && [ ! "$f" -nt "$T/orig" ]; }
+t_i_jq_format() { reset; mkdir -p "$HOME/.claude"
+  printf '%s' '{"model":"x","env":{"NAME":"Zażółć ☃"},"list":[1,[],{}],"hooks":{"Stop":[{"hooks":[{"type":"command","command":"other"}]}]}}' >"$HOME/.claude/settings.json"
+  plugin install && eq "$(cat "$HOME/.claude/settings.json")" "$(jq . "$HOME/.claude/settings.json")"; }
+t_i_mode_link() { reset; mkdir -p "$HOME/.claude" "$HOME/dotfiles"; printf '{"model":"x"}\n' >"$HOME/dotfiles/settings.json"
+  chmod 600 "$HOME/dotfiles/settings.json"; ln -s "$HOME/dotfiles/settings.json" "$HOME/.claude/settings.json"
+  plugin install && [ -L "$HOME/.claude/settings.json" ] && grep -q herdr-fm-title "$HOME/dotfiles/settings.json" &&
+    eq "$(ls -l "$HOME/dotfiles/settings.json" | cut -c1-10)" "-rw-------"; }
+t_i_python() { reset; claude_settings; plugin install && eq "$(cat "$XDG_DATA_HOME/herdr-fm-title/python")" "$HERDR_FM_TITLE_PYTHON"; }
 t_status_outdated() { reset; claude_settings; plugin install || return 1
   sed -i '' "s#$XDG_DATA_HOME#/old/place#g" "$HOME/.claude/settings.json"; plugin status && grep -q 'claude: connected to an old runtime path' "$T/plugin.out"; }
 check "install: Claude hooks added, others kept, idempotent, backed up once" t_i_claude
@@ -322,6 +333,10 @@ check "status: outdated runtime path" t_status_outdated
 check "install: every emptied event array is dropped" t_i_empty_event
 check "uninstall: a config without our entries is not rewritten" t_u_untouched
 check "install: Codex hooks = false is kept, and status says so" t_i_codex_false
+check "install --sync: an unchanged config is not rewritten" t_i_unchanged
+check "install: JSON is written the way jq formats it" t_i_jq_format
+check "install: a symlinked config is written through, keeping its mode" t_i_mode_link
+check "install: the runtime runs on the interpreter install ran on" t_i_python
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

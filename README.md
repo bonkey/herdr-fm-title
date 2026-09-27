@@ -21,7 +21,7 @@ The prompt never leaves the machine. Prompts under 3 words wait for the next one
   - the `fm` CLI (macOS 27+); accept its terms once with `sudo fm license`;
   - Xcode Command Line Tools (macOS 26+): a small Swift fallback is compiled in the background
     the first time it is needed.
-- herdr ≥ 0.9.1, `jq`, and Python ≥ 3.9 (the Xcode Command Line Tools provide it).
+- herdr ≥ 0.9.1 and Python ≥ 3.9, which the Xcode Command Line Tools provide.
 - [herdr-auto-title](https://github.com/kryptamine/herdr-auto-title) for the tab label. herdr
   itself labels tabs by position; without auto-title the name shows only where herdr shows pane
   titles, such as the navigator.
@@ -72,7 +72,7 @@ and run `install` again:
 
     git clone https://github.com/bonkey/herdr-fm-title
     herdr plugin link "$PWD/herdr-fm-title"
-    sh tests/run.sh && node --test tests/
+    sh tests/run.sh && node --test tests/    # the tests need jq
 
 The design is in [docs/superpowers/specs](docs/superpowers/specs/).
 
