@@ -1,5 +1,5 @@
-"""status.py: action "status". Each agent's connection, the Python the runtime runs on, and the
-model backend."""
+"""status.py: action "status". Each agent's connection, the title mode, the Python the runtime
+runs on, and the model backend."""
 import os
 import sys
 
@@ -19,7 +19,8 @@ def main():
             if agent == "codex" and state == "connected" and lib.codex_features_state() != "true":
                 state += ", but hooks are off in config.toml [features]"
         line += "%s: %s; " % (agent, state)
-    lib.notify("%spython: %s; model: %s" % (line, lib.env("HERDR_FM_TITLE_PYTHON", sys.executable), lib.backend_state()))
+    lib.notify("%smode: %s; python: %s; model: %s" % (line, lib.deployed_mode(),
+                                                       lib.env("HERDR_FM_TITLE_PYTHON", sys.executable), lib.backend_state()))
     return 0
 
 

@@ -32,6 +32,7 @@ AGENT_DIRS = {
     "opencode": os.path.join(env("XDG_CONFIG_HOME", HOME + "/.config"), "opencode"),
 }
 SUPPORTED = ["claude", "codex", "opencode"]
+MODES = ("slug", "title")
 MARK = "herdr-fm-title/bin/hook"
 BACKUP = ".bak-herdr-fm-title"
 
@@ -72,10 +73,35 @@ def selected_agents():
     return [a for a in SUPPORTED if os.path.isdir(AGENT_DIRS[a]) and (not wanted or a in wanted)]
 
 
+def config_mode():
+    """The `mode` in config.toml: "" when it has none (or no valid one), None when there is no
+    config dir to read."""
+    if not env("HERDR_PLUGIN_CONFIG_DIR"):
+        return None
+    try:
+        for line in read_text(CONFIG_FILE).splitlines():
+            m = re.match(r"""\s*mode\s*=\s*["']?([a-z]+)["']?\s*(#.*)?$""", line, re.ASCII)
+            if m:
+                return m.group(1) if m.group(1) in MODES else ""
+    except OSError:
+        pass
+    return ""
+
+
+def deployed_mode():
+    try:
+        with open(os.path.join(DATA_DIR, "config.json"), encoding="utf-8") as f:
+            mode = json.load(f).get("mode")
+    except (OSError, ValueError, AttributeError):
+        mode = None
+    return mode if mode in MODES else "slug"
+
+
 def deploy_runtime():
     """Copies runtime/ into place through a temporary sibling, so a hook never sees a half-written
     runtime. Mtimes are kept, so the Swift binary is rebuilt only for a new title.swift. The
-    interpreter this runs on is pinned for the runtime in <data>/python."""
+    interpreter this runs on is pinned for the runtime in <data>/python, and the mode from
+    config.toml goes to <data>/config.json. Without a config dir to read, the deployed mode stays."""
     tmp, old = "%s.new.%d" % (DATA_DIR, os.getpid()), DATA_DIR + ".old"
     try:
         os.makedirs(os.path.dirname(DATA_DIR), exist_ok=True)
@@ -88,6 +114,12 @@ def deploy_runtime():
             os.chmod(path, os.stat(path).st_mode | 0o111)
         with open(os.path.join(tmp, "python"), "w", encoding="utf-8") as f:
             f.write(env("HERDR_FM_TITLE_PYTHON", sys.executable) + "\n")
+        mode = config_mode()
+        if mode is None:
+            mode = deployed_mode() if os.path.isfile(os.path.join(DATA_DIR, "config.json")) else ""
+        if mode:
+            with open(os.path.join(tmp, "config.json"), "w", encoding="utf-8") as f:
+                f.write(json.dumps({"mode": mode}) + "\n")
         if os.path.lexists(DATA_DIR):
             os.rename(DATA_DIR, old)
         os.rename(tmp, DATA_DIR)

@@ -1,6 +1,6 @@
 id = "bonkey.fm-title"
 name = "Agent session titles"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.9.1"
 description = "Names each agent session from its first prompt with Apple's on-device model; the title reaches the tab via auto-title and, where supported, the agent's own session name."
 platforms = ["macos"]

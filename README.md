@@ -4,8 +4,8 @@
 first prompt, written on-device by Apple's Foundation Models. The name becomes the tab label and,
 where the agent supports it, the agent's own session name.
 
-    before:  need some ideation of a plugin for herdr. when I s
-    after:   Herdr Plugin Tab Name
+    before:  the slash probe checks fail when I run them in the her
+    after:   slash-probe-checks   (with mode = "title": Slash Probe Checks Fail)
 
 | Agent | Tab title | Agent's own session name | Rename reaches the tab |
 |---|---|---|---|
@@ -45,15 +45,20 @@ What `install` changes, each file backed up once as `<file>.bak-herdr-fm-title`:
 The agents run a copy of the plugin's runtime in `~/.local/share/herdr-fm-title`, refreshed on
 every herdr server start for the agents already connected.
 
-To connect only some agents, put this in `$(herdr plugin config-dir bonkey.fm-title)/config.toml`
-and run `install` again:
+Settings go in `$(herdr plugin config-dir bonkey.fm-title)/config.toml`; run `install` again after
+changing them:
 
-    agents = ["claude", "opencode"]
+    agents = ["claude", "opencode"]   # connect only these agents
+    mode = "title"                    # "Login Crash Fix" instead of the default "login-crash-fix"
+
+The default mode, `slug`, gives a terse lowercase slug of at most 3 words. `title` gives a 2–4
+word Title Case title.
 
 ## Actions
 
-- `bonkey.fm-title.install` — connect agents (again, e.g. after changing `agents`).
-- `bonkey.fm-title.status` — each agent's connection and the model backend.
+- `bonkey.fm-title.install` — connect agents (again, e.g. after changing `agents` or `mode`).
+- `bonkey.fm-title.status` — each agent's connection, the mode, the Python in use and the model
+  backend.
 - `bonkey.fm-title.uninstall` — remove exactly what `install` added, and the runtime copy.
 
 ## Notes
@@ -72,7 +77,7 @@ and run `install` again:
 
     git clone https://github.com/bonkey/herdr-fm-title
     herdr plugin link "$PWD/herdr-fm-title"
-    sh tests/run.sh && node --test tests/    # the tests need jq
+    sh tests/run.sh && node --test tests/ && python3 -m unittest discover -s tests   # needs jq
 
 The design is in [docs/superpowers/specs](docs/superpowers/specs/).
 

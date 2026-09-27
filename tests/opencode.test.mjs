@@ -49,7 +49,7 @@ test("title hook sets the title from fm-title", async () => {
   process.env.HERDR_FM_TITLE_BACKEND = stubOk;
   const ev = firstMessage("fix the login crash on the settings screen");
   await (await titleHook())(ev);
-  assert.equal(ev.result, "Login Crash Fix");
+  assert.equal(ev.result, "login-crash-fix");
 });
 
 test("title hook leaves the title to OpenCode when fm-title fails", async () => {

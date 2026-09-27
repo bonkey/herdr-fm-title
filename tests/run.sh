@@ -32,10 +32,12 @@ cat >"$T/shims/herdr" <<EOF
 if [ "\$1 \$2" = "pane get" ]; then printf '{"result":{"pane":{"agent":"%s"}}}\\n' "\$(cat "$T/agent" 2>/dev/null)"; exit; fi
 printf '%s\\n' "\$*" >>"$T/herdr.log"
 EOF
-# Backend stub: fm's interface; stdin to $T/stdin, reply from \$STUB_REPLY, exit \$STUB_EXIT.
+# Backend stub: fm's interface; stdin to $T/stdin, arguments to $T/stub.args, reply from
+# \$STUB_REPLY, exit \$STUB_EXIT.
 cat >"$T/stub" <<EOF
 #!/bin/sh
 cat >"$T/stdin"
+printf '%s\n' "\$*" >"$T/stub.args"
 echo x >>"$T/stub.calls"
 printf '%s\n' "\${STUB_REPLY-Stub Title}"
 exit \${STUB_EXIT:-0}
@@ -43,7 +45,7 @@ EOF
 chmod +x "$T/shims/herdr" "$T/stub"
 
 reset() { # fresh HOME, XDG dirs and logs for each case
-  rm -rf "$T/h" "$T/agent" "$T/herdr.log" "$T/stdin" "$T/stub.calls" "$T/bin"
+  rm -rf "$T/h" "$T/agent" "$T/herdr.log" "$T/stdin" "$T/stub.calls" "$T/stub.args" "$T/bin"
   mkdir -p "$T/h" "$T/bin"
   export HOME="$T/h" XDG_CACHE_HOME="$T/h/cache" XDG_STATE_HOME="$T/h/state" XDG_DATA_HOME="$T/h/data" \
     XDG_CONFIG_HOME="$T/h/config"
@@ -53,7 +55,7 @@ reset() { # fresh HOME, XDG dirs and logs for each case
 }
 use_stub() { export HERDR_FM_TITLE_BACKEND="$T/stub"; }
 in_herdr() { export HERDR_ENV=1 HERDR_PANE_ID=p1; echo "${1:-claude}" >"$T/agent"; }
-fm_title() { printf '%s' "$1" | "$repo/runtime/bin/fm-title"; }
+fm_title() { t=$1; shift; printf '%s' "$t" | "$repo/runtime/bin/fm-title" "$@"; }
 calls() { [ -f "$T/stub.calls" ] && wc -l <"$T/stub.calls" | tr -d ' ' || echo 0; }
 
 # --- fm-title: text preparation --------------------------------------------------------------
@@ -74,7 +76,7 @@ check "fm-title keeps a prompt starting with a path" t_path_prompt
 check "fm-title skips prompts under 3 words" t_short
 
 # --- fm-title: cleaning ----------------------------------------------------------------------
-clean() { reset; use_stub; STUB_REPLY=$1 fm_title 'fix the login crash on ipad'; }
+clean() { reset; use_stub; STUB_REPLY=$1 fm_title 'fix the login crash on ipad' --mode title; }
 t_quotes() { eq "$(clean '"Login Crash Fix"')" "Login Crash Fix"; }
 t_pathword() { eq "$(clean 'Add Captions to @scripts/promo/intro-video/')" "Add Captions"; }
 t_words() { eq "$(clean 'Herdr Plugin for Tab Name Generation')" "Herdr Plugin Tab Name"; }
@@ -112,6 +114,21 @@ check "fm-title cuts a title at 40 characters, even mid-word" t_cut
 check "fm-title strips leading quotes and trailing punctuation marks" t_endpunct
 check "fm-title keeps an apostrophe inside a word" t_apostrophe
 
+# --- fm-title: modes --------------------------------------------------------------------------
+slug() { reset; use_stub; STUB_REPLY=$1 fm_title 'fix the login crash on ipad'; }
+t_slug_default() { eq "$(slug 'Login Crash Fix')" "login-crash-fix" && grep -q 'at most 3 words' "$T/stub.args"; }
+t_title_words() { reset; use_stub; fm_title 'fix the login crash on ipad' --mode title >/dev/null && grep -q 'at most 4 words' "$T/stub.args"; }
+t_slug_terse() { eq "$(slug 'Session Duration And Cost Display')" "session-duration-cost" && eq "$(slug 'Add Captions to Video')" "add-captions-video"; }
+t_slug_ascii() { eq "$(slug 'Zażółć Gęślą Jaźń')" "zazolc-gesla-jazn" && eq "$(slug "Don't Crash UTF-8 Parser")" "dont-crash-utf-8"; }
+t_slug_long() { eq "$(slug 'Supercalifragilistic Internationalization Refactor')" "supercalifragilistic"; }
+t_mode_bogus() { reset; use_stub; ! fm_title 'fix the login crash on ipad' --mode bogus && eq "$(calls)" 0; }
+check "fm-title: slug is the default, asked for at most 3 words" t_slug_default
+check "fm-title: --mode title asks for at most 4 words" t_title_words
+check "fm-title: a slug drops small words and keeps 3" t_slug_terse
+check "fm-title: a slug is lowercase ASCII" t_slug_ascii
+check "fm-title: a slug keeps whole words within 24 characters" t_slug_long
+check "fm-title: an unknown --mode gives no title" t_mode_bogus
+
 # --- fm-title: backend order -----------------------------------------------------------------
 fm_shim() { # fm_shim available|unavailable
   cat >"$T/bin/fm" <<EOF
@@ -132,14 +149,14 @@ EOF
   printf '#!/bin/sh\necho called >>"%s/swift.log"\n' "$T" >"$T/bin/swift"
   chmod +x "$T/bin/swiftc" "$T/bin/swift"
 }
-t_fm_first() { reset; fm_shim available; swift_bin; eq "$(fm_title 'fix the login crash on ipad')" "Fm Title"; }
-t_swift_next() { reset; fm_shim unavailable; swift_bin; eq "$(fm_title 'fix the login crash on ipad')" "Swift Title"; }
+t_fm_first() { reset; fm_shim available; swift_bin; eq "$(fm_title 'fix the login crash on ipad' --mode title)" "Fm Title"; }
+t_swift_next() { reset; fm_shim unavailable; swift_bin; eq "$(fm_title 'fix the login crash on ipad' --mode title)" "Swift Title"; }
 t_none() { reset; fm_shim unavailable; ! fm_title 'fix the login crash on ipad'; }
 t_build() {
   reset; rm -f "$T/swiftc.log" "$T/swift.log"; swiftc_shim
   ! fm_title 'fix the login crash on ipad' || return 1
   i=0; while [ ! -x "$XDG_CACHE_HOME/herdr-fm-title/bin/title" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-  eq "$(fm_title 'fix the login crash on ipad')" "Built Title" && eq "$(wc -l <"$T/swiftc.log" | tr -d ' ')" 1 && [ ! -e "$T/swift.log" ]
+  eq "$(fm_title 'fix the login crash on ipad' --mode title)" "Built Title" && eq "$(wc -l <"$T/swiftc.log" | tr -d ' ')" 1 && [ ! -e "$T/swift.log" ]
 }
 t_stale() { reset; swiftc_shim; swift_bin; touch -t 200001010000 "$XDG_CACHE_HOME/herdr-fm-title/bin/title"; rm -f "$T/swiftc.log"
   ! fm_title 'fix the login crash on ipad' || return 1
@@ -179,8 +196,8 @@ ups() { jq -cn --arg s "$1" --arg p "$2" --arg t "$T/h/proj/$1.jsonl" '{hook_eve
 sidecar() { mkdir -p "$T/h/proj/$1" && jq -cn --arg t "$2" '{customTitle: $t}' >"$T/h/proj/$1/custom-title.json"; }
 marker() { cat "$XDG_STATE_HOME/herdr-fm-title/named/$1" 2>/dev/null; }
 t_c_first() { reset; use_stub; in_herdr; out=$(hook claude "$(ups s1 'fix the login crash on ipad')") &&
-  eq "$out" '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","sessionTitle":"Stub Title"}}' &&
-  eq "$(marker claude-s1)" "Stub Title" && grep -q -- '--agent claude --title Stub Title' "$T/herdr.log"; }
+  eq "$out" '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","sessionTitle":"stub-title"}}' &&
+  eq "$(marker claude-s1)" "stub-title" && grep -q -- '--agent claude --title stub-title' "$T/herdr.log"; }
 t_c_rename() { reset; use_stub; in_herdr; hook claude "$(ups s1 'fix the login crash on ipad')" >/dev/null; sidecar s1 "My Name"
   out=$(hook claude "$(ups s1 'and now the settings screen')") && eq "$out" "" && eq "$(calls)" 1 &&
   eq "$(marker claude-s1)" "My Name" && eq "$(tail -n1 "$T/herdr.log")" "pane report-metadata p1 --source plugin:bonkey.fm-title --agent claude --title My Name"; }
@@ -230,10 +247,10 @@ check "without Python the entry points do nothing and never exit 2" t_nopython
 
 # --- hook codex ------------------------------------------------------------------------------
 t_x_first() { reset; use_stub; in_herdr codex; out=$(hook codex "$(ups s1 'fix the login crash on ipad')") && eq "$out" "" &&
-  eq "$(marker codex-s1)" "Stub Title" && grep -q -- '--agent codex --title Stub Title' "$T/herdr.log"; }
+  eq "$(marker codex-s1)" "stub-title" && grep -q -- '--agent codex --title stub-title' "$T/herdr.log"; }
 t_x_named() { reset; use_stub; in_herdr codex; hook codex "$(ups s1 'fix the login crash on ipad')"; rm -f "$T/herdr.log"
   out=$(hook codex "$(ups s1 'another long prompt here')") && eq "$out" "" && eq "$(calls)" 1 &&
-  grep -q -- '--agent codex --title Stub Title' "$T/herdr.log"; }
+  grep -q -- '--agent codex --title stub-title' "$T/herdr.log"; }
 check "hook codex: first prompt names the tab, prints nothing" t_x_first
 check "hook codex: a named session re-reports its title, never regenerates" t_x_named
 
@@ -291,7 +308,7 @@ t_uninstall() {
 }
 t_status() {
   reset; claude_settings; mkdir -p "$XDG_CONFIG_HOME/opencode"; plugin install && plugin status || return 1
-  grep -qF "claude: connected; codex: not installed; opencode: connected; python: $HERDR_FM_TITLE_PYTHON; model: none" "$T/plugin.out"
+  grep -qF "claude: connected; codex: not installed; opencode: connected; mode: slug; python: $HERDR_FM_TITLE_PYTHON; model: none" "$T/plugin.out"
 }
 t_status_fm() { reset; fm_shim available; plugin status && grep -q 'model: fm$' "$T/plugin.out"; }
 t_i_empty_event() { reset; mkdir -p "$HOME/.claude"
@@ -312,6 +329,14 @@ t_i_mode_link() { reset; mkdir -p "$HOME/.claude" "$HOME/dotfiles"; printf '{"mo
   chmod 600 "$HOME/dotfiles/settings.json"; ln -s "$HOME/dotfiles/settings.json" "$HOME/.claude/settings.json"
   plugin install && [ -L "$HOME/.claude/settings.json" ] && grep -q herdr-fm-title "$HOME/dotfiles/settings.json" &&
     eq "$(ls -l "$HOME/dotfiles/settings.json" | cut -c1-10)" "-rw-------"; }
+mode_config() { mkdir -p "$HERDR_PLUGIN_CONFIG_DIR" && printf '%s\n' "$1" >|"$HERDR_PLUGIN_CONFIG_DIR/config.toml"; }
+deployed_title() { printf 'fix the login crash on ipad' | "$XDG_DATA_HOME/herdr-fm-title/bin/fm-title" "$@"; }
+t_i_mode() { reset; use_stub; claude_settings; mode_config 'mode = "title"'; plugin install &&
+  eq "$(deployed_title)" "Stub Title" && eq "$(deployed_title --mode slug)" "stub-title" &&
+  plugin status && grep -q 'mode: title;' "$T/plugin.out"; }
+t_sync_mode() { reset; use_stub; claude_settings; mode_config 'mode = "title"'; plugin install || return 1
+  (unset HERDR_PLUGIN_CONFIG_DIR; plugin install --sync) && eq "$(deployed_title)" "Stub Title" &&
+    mode_config 'agents = ["claude"]' && plugin install --sync && eq "$(deployed_title)" "stub-title"; }
 t_i_python() { reset; claude_settings; plugin install && eq "$(cat "$XDG_DATA_HOME/herdr-fm-title/python")" "$HERDR_FM_TITLE_PYTHON"; }
 t_status_outdated() { reset; claude_settings; plugin install || return 1
   sed -i '' "s#$XDG_DATA_HOME#/old/place#g" "$HOME/.claude/settings.json"; plugin status && grep -q 'claude: connected to an old runtime path' "$T/plugin.out"; }
@@ -337,6 +362,8 @@ check "install --sync: an unchanged config is not rewritten" t_i_unchanged
 check "install: JSON is written the way jq formats it" t_i_jq_format
 check "install: a symlinked config is written through, keeping its mode" t_i_mode_link
 check "install: the runtime runs on the interpreter install ran on" t_i_python
+check "install: mode in config.toml reaches the runtime and status" t_i_mode
+check "install --sync: keeps the mode without a config dir, applies a changed config" t_sync_mode
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
