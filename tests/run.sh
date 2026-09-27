@@ -87,6 +87,12 @@ t_oneword() { ! clean 'Ok' && ! clean 'The Fix'; }
 t_quoted() { reset; use_stub; fm_title 'fix the login crash on ipad' >/dev/null &&
   eq "$(tr '\n' '|' <"$T/stdin")" 'Task:|"""|fix the login crash on ipad|"""|'; }
 t_failed() { reset; use_stub; ! STUB_EXIT=1 fm_title 'fix the login crash on ipad' && grep -q 'backend failed' "$XDG_STATE_HOME/herdr-fm-title/runtime.log"; }
+t_logcap() { reset; use_stub; log=$XDG_STATE_HOME/herdr-fm-title/runtime.log; mkdir -p "$(dirname "$log")"
+  head -c 102400 /dev/zero | tr '\0' x >"$log"
+  ! STUB_EXIT=1 fm_title 'fix the login crash on ipad' && eq "$(wc -c <"$log" | tr -d ' ')" 51200 && tail -n1 "$log" | grep -q 'backend failed'; }
+t_cut() { eq "$(clean 'Supercalifragilistic Internationalization Refactor')" "Supercalifragilistic Internationalizatio"; }
+t_endpunct() { eq "$(clean "'Refactor Parser C++'")" "Refactor Parser C"; }
+t_apostrophe() { eq "$(clean "Don't Crash Parser")" "Don't Crash Parser"; }
 check "fm-title strips quotes" t_quotes
 check "fm-title drops path-like words and a trailing small word" t_pathword
 check "fm-title drops small words from a long reply, then keeps 4" t_words
@@ -98,6 +104,10 @@ check "fm-title fails on an empty reply" t_empty
 check "fm-title rejects a one-word title" t_oneword
 check "fm-title sends the prompt quoted" t_quoted
 check "fm-title logs a failed backend" t_failed
+check "fm-title keeps the log under 100 KB by dropping its older half" t_logcap
+check "fm-title cuts a title at 40 characters, even mid-word" t_cut
+check "fm-title strips leading quotes and trailing punctuation marks" t_endpunct
+check "fm-title keeps an apostrophe inside a word" t_apostrophe
 
 # --- fm-title: backend order -----------------------------------------------------------------
 fm_shim() { # fm_shim available|unavailable
@@ -129,12 +139,23 @@ t_build() {
   eq "$(fm_title 'fix the login crash on ipad')" "Built Title" && eq "$(wc -l <"$T/swiftc.log" | tr -d ' ')" 1 && [ ! -e "$T/swift.log" ]
 }
 t_stale() { reset; swiftc_shim; swift_bin; touch -t 200001010000 "$XDG_CACHE_HOME/herdr-fm-title/bin/title"; rm -f "$T/swiftc.log"
-  ! fm_title 'fix the login crash on ipad'; }
+  ! fm_title 'fix the login crash on ipad' || return 1
+  i=0; while [ -d "$XDG_CACHE_HOME/herdr-fm-title/build.lock" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  eq "$(wc -l <"$T/swiftc.log" | tr -d ' ')" 1; }
 check "fm-title prefers fm" t_fm_first
 check "fm-title uses the Swift binary without fm" t_swift_next
 check "fm-title fails with no backend" t_none
 check "fm-title builds the Swift binary once in the background, never the interpreter" t_build
+t_lock_fresh() { reset; rm -f "$T/swiftc.log"; swiftc_shim; mkdir -p "$XDG_CACHE_HOME/herdr-fm-title/build.lock"
+  ! fm_title 'fix the login crash on ipad' && sleep 0.3 && [ ! -e "$T/swiftc.log" ]; }
+t_lock_stale() { reset; rm -f "$T/swiftc.log"; swiftc_shim; mkdir -p "$XDG_CACHE_HOME/herdr-fm-title/build.lock"
+  touch -t 200001010000 "$XDG_CACHE_HOME/herdr-fm-title/build.lock"
+  ! fm_title 'fix the login crash on ipad' || return 1
+  i=0; while [ ! -x "$XDG_CACHE_HOME/herdr-fm-title/bin/title" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  eq "$(wc -l <"$T/swiftc.log" | tr -d ' ')" 1; }
 check "fm-title rebuilds a binary older than title.swift" t_stale
+check "fm-title leaves a build to the process holding the lock" t_lock_fresh
+check "fm-title takes over a build lock older than 10 minutes" t_lock_stale
 
 # --- herdr-title -----------------------------------------------------------------------------
 t_report() { reset; in_herdr; "$repo/runtime/bin/herdr-title" claude "Login Crash Fix" &&
@@ -177,7 +198,26 @@ check "hook claude: a marker stops generation" t_c_marker_only
 check "hook claude: a failed backend leaves no output or marker" t_c_fail
 check "hook claude: rejects an unsafe session id" t_c_badsid
 check "hook claude: SessionStart reports session_title" t_c_start
+t_c_nosuffix() { reset; use_stub; in_herdr; sidecar s4 "Plain Path"
+  out=$(hook claude "$(jq -cn --arg t "$T/h/proj/s4" '{hook_event_name: "UserPromptSubmit", session_id: "s4", transcript_path: $t, prompt: "fix the login crash on ipad"}')") &&
+  eq "$out" "" && eq "$(calls)" 0 && eq "$(marker claude-s4)" "Plain Path"; }
+t_c_nonstring() { reset; use_stub; in_herdr
+  hook claude '{"hook_event_name":"UserPromptSubmit","session_id":7,"prompt":"fix the login crash on ipad"}' &&
+    hook claude '{"hook_event_name":"UserPromptSubmit","session_id":"s5","prompt":["fix the login crash on ipad"]}' &&
+    hook claude '["UserPromptSubmit"]' && hook claude 'not json' &&
+    eq "$(calls)" 0 && [ ! -e "$T/herdr.log" ] && [ -z "$(marker claude-s5)" ]; }
+old_marker() { # old_marker NAME DAYS_AGO
+  mkdir -p "$XDG_STATE_HOME/herdr-fm-title/named" && echo Old >"$XDG_STATE_HOME/herdr-fm-title/named/$1" &&
+    touch -t "$(date -v-"$2"d +%Y%m%d%H%M)" "$XDG_STATE_HOME/herdr-fm-title/named/$1"; }
+t_prune() { reset; old_marker claude-old 32; old_marker claude-recent 29
+  hook claude '{"hook_event_name":"SessionStart","session_id":"s6"}' &&
+    [ ! -e "$XDG_STATE_HOME/herdr-fm-title/named/claude-old" ] && [ -e "$XDG_STATE_HOME/herdr-fm-title/named/claude-recent" ] &&
+    old_marker claude-old2 40 && hook claude '{"hook_event_name":"SessionStart","session_id":"s6"}' &&
+    [ -e "$XDG_STATE_HOME/herdr-fm-title/named/claude-old2" ]; }
 check "hook claude: SessionStart without a title does nothing" t_c_start_none
+check "hook claude: a transcript path without .jsonl finds its sidecar" t_c_nosuffix
+check "hook claude: non-string fields and non-object input do nothing" t_c_nonstring
+check "hook: markers over 30 days old are pruned, at most once a day" t_prune
 
 # --- hook codex ------------------------------------------------------------------------------
 t_x_first() { reset; use_stub; in_herdr codex; out=$(hook codex "$(ups s1 'fix the login crash on ipad')") && eq "$out" "" &&
@@ -245,6 +285,14 @@ t_status() {
   grep -q 'claude: connected; codex: not installed; opencode: connected; model: none' "$T/plugin.out"
 }
 t_status_fm() { reset; fm_shim available; plugin status && grep -q 'model: fm$' "$T/plugin.out"; }
+t_i_empty_event() { reset; mkdir -p "$HOME/.claude"
+  printf '%s\n' '{"hooks":{"Notification":[],"Stop":[{"hooks":[{"type":"command","command":"other-stop"}]}]}}' >"$HOME/.claude/settings.json"
+  plugin install && jq -e '.hooks.Notification == null and .hooks.Stop[0].hooks[0].command == "other-stop"' "$HOME/.claude/settings.json" >/dev/null; }
+t_u_untouched() { reset; mkdir -p "$HOME/.claude"; printf '{"hooks":{"Stop":[]}}' >"$HOME/.claude/settings.json"
+  touch -t 200001010000 "$HOME/.claude/settings.json"; cp -p "$HOME/.claude/settings.json" "$T/orig"
+  plugin uninstall && cmp -s "$HOME/.claude/settings.json" "$T/orig" && [ ! "$HOME/.claude/settings.json" -nt "$T/orig" ]; }
+t_i_codex_false() { reset; mkdir -p "$HOME/.codex"; printf '[features]\nhooks = false\n' >"$HOME/.codex/config.toml"; cp "$HOME/.codex/config.toml" "$T/orig"
+  plugin install && cmp -s "$HOME/.codex/config.toml" "$T/orig" && plugin status && grep -q 'codex: connected, but hooks are off' "$T/plugin.out"; }
 t_status_outdated() { reset; claude_settings; plugin install || return 1
   sed -i '' "s#$XDG_DATA_HOME#/old/place#g" "$HOME/.claude/settings.json"; plugin status && grep -q 'claude: connected to an old runtime path' "$T/plugin.out"; }
 check "install: Claude hooks added, others kept, idempotent, backed up once" t_i_claude
@@ -262,6 +310,9 @@ check "uninstall: agent configs restored, runtime removed, backups kept" t_unins
 check "status: connections and model" t_status
 check "status: fm backend" t_status_fm
 check "status: outdated runtime path" t_status_outdated
+check "install: every emptied event array is dropped" t_i_empty_event
+check "uninstall: a config without our entries is not rewritten" t_u_untouched
+check "install: Codex hooks = false is kept, and status says so" t_i_codex_false
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
