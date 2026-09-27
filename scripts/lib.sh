@@ -23,6 +23,8 @@ run_python() {
   done
   msg="Agent session titles need Python 3.9 or later: install the Xcode Command Line Tools with xcode-select --install."
   printf '%s\n' "$msg"
+  # The startup sync stays quiet: its output goes to the plugin log.
+  [ "${1:-}" = --sync ] && return 0
   "${HERDR_BIN_PATH:-herdr}" notification show "Agent session titles" --body "$msg" >/dev/null 2>&1
-  [ "${1:-}" = --sync ]
+  return 1
 }

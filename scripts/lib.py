@@ -55,8 +55,8 @@ def hook_cmd(agent):
     return "sh '%s/bin/hook' %s" % (DATA_DIR, agent)
 
 
-def read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as f:
+def read_text(path, newline=None):
+    with open(path, encoding="utf-8", errors="replace", newline=newline) as f:
         return f.read()
 
 
@@ -86,6 +86,15 @@ def config_mode():
     except OSError:
         pass
     return ""
+
+
+def pinned_python():
+    """The interpreter the deployed runtime runs on, noting when it is gone."""
+    try:
+        path = read_text(os.path.join(DATA_DIR, "python")).strip()
+    except OSError:
+        return "none, run install"
+    return path if os.access(path, os.X_OK) else path + " (missing, run install)"
 
 
 def deployed_mode():
@@ -136,7 +145,7 @@ def write_atomic(path, text):
     target = os.path.realpath(path)
     tmp = "%s.tmp.%d" % (target, os.getpid())
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
             f.write(text)
         if os.path.exists(target):
             os.chmod(tmp, stat.S_IMODE(os.stat(target).st_mode))
@@ -172,7 +181,9 @@ def json_update(path, change, backup=True):
         new = change(copy.deepcopy(data))
         if exists and new == data:
             return True
-        text = json.dumps(new, indent=2, ensure_ascii=False) + "\n"
+        # A number JSON can't write back (1e400 parses to inf) fails here instead of becoming
+        # Infinity, which no JSON reader accepts.
+        text = json.dumps(new, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
         if exists and backup and not os.path.lexists(path + BACKUP):
             shutil.copy2(path, path + BACKUP)
         write_atomic(path, text)
@@ -316,7 +327,7 @@ def codex_enable_hooks():
         if not os.path.isfile(path):
             write_atomic(path, "[features]\nhooks = true\n")
             return True
-        text = read_text(path)
+        text = read_text(path, newline="")  # keeps CRLF lines as they are
         if not os.path.lexists(path + BACKUP):
             shutil.copy2(path, path + BACKUP)
         lines = text.split("\n")

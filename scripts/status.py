@@ -19,8 +19,7 @@ def main():
             if agent == "codex" and state == "connected" and lib.codex_features_state() != "true":
                 state += ", but hooks are off in config.toml [features]"
         line += "%s: %s; " % (agent, state)
-    lib.notify("%smode: %s; python: %s; model: %s" % (line, lib.deployed_mode(),
-                                                       lib.env("HERDR_FM_TITLE_PYTHON", sys.executable), lib.backend_state()))
+    lib.notify("%smode: %s; python: %s; model: %s" % (line, lib.deployed_mode(), lib.pinned_python(), lib.backend_state()))
     return 0
 
 

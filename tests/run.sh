@@ -369,6 +369,12 @@ t_i_mode() { reset; use_stub; claude_settings; mode_config 'mode = "title"'; plu
 t_sync_mode() { reset; use_stub; claude_settings; mode_config 'mode = "title"'; plugin install || return 1
   (unset HERDR_PLUGIN_CONFIG_DIR; plugin install --sync) && eq "$(deployed_title)" "Stub Title" &&
     mode_config 'agents = ["claude"]' && plugin install --sync && eq "$(deployed_title)" "stub-title"; }
+t_i_huge_number() { reset; mkdir -p "$HOME/.claude"; printf '{"model":"x","n":1e400}\n' >"$HOME/.claude/settings.json"
+  cp "$HOME/.claude/settings.json" "$T/orig"; ! plugin install && cmp -s "$HOME/.claude/settings.json" "$T/orig" && grep -q 'Failed: claude' "$T/plugin.out"; }
+t_i_codex_crlf() { reset; mkdir -p "$HOME/.codex"; printf 'model = "gpt"\r\n[features]\r\nworktrees = true\r\n' >"$HOME/.codex/config.toml"
+  printf 'model = "gpt"\r\n[features]\r\nhooks = true\nworktrees = true\r\n' >"$T/want"; plugin install && cmp -s "$HOME/.codex/config.toml" "$T/want"; }
+t_status_pinned() { reset; claude_settings; plugin install || return 1
+  echo /nonexistent/python3 >|"$XDG_DATA_HOME/herdr-fm-title/python"; plugin status && grep -qF 'python: /nonexistent/python3 (missing, run install);' "$T/plugin.out"; }
 t_i_python() { reset; claude_settings; plugin install && eq "$(cat "$XDG_DATA_HOME/herdr-fm-title/python")" "$HERDR_FM_TITLE_PYTHON"; }
 t_status_outdated() { reset; claude_settings; plugin install || return 1
   sed -i '' "s#$XDG_DATA_HOME#/old/place#g" "$HOME/.claude/settings.json"; plugin status && grep -q 'claude: connected to an old runtime path' "$T/plugin.out"; }
@@ -394,6 +400,9 @@ check "install --sync: an unchanged config is not rewritten" t_i_unchanged
 check "install: JSON is written the way jq formats it" t_i_jq_format
 check "install: a symlinked config is written through, keeping its mode" t_i_mode_link
 check "install: the runtime runs on the interpreter install ran on" t_i_python
+check "install: a number JSON can't write back leaves the config untouched" t_i_huge_number
+check "install: Codex config.toml keeps its CRLF lines" t_i_codex_crlf
+check "status: shows the runtime's pinned interpreter, and when it is gone" t_status_pinned
 check "install: mode in config.toml reaches the runtime and status" t_i_mode
 check "install --sync: keeps the mode without a config dir, applies a changed config" t_sync_mode
 
