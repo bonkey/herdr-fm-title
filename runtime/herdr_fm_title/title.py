@@ -167,15 +167,29 @@ def configured_mode():
     return mode if mode in MODES else "slug"
 
 
+def name(title, ticket, mode):
+    """The ticket, then the title without words that repeat it (ENG-42, or #12 for repo#12)."""
+    if ticket:
+        echoes = {ticket.lower(), "#" + ticket.rpartition("#")[2]} if "#" in ticket else {ticket.lower()}
+        title = " ".join(w for w in title.split(" ") if w.lower() not in echoes)
+    if mode == "slug":
+        parts = [re.sub(r"[^a-z0-9]+", "-", ticket.lower()).strip("-") if ticket else "", slugify(title)]
+        return "-".join(p for p in parts if p)
+    return " ".join(p for p in (ticket, title) if p)
+
+
 def title_for(prompt, mode=None):
     """The name for a raw prompt in the given mode (else the configured one), or None. Prompts
-    under 3 words wait for the next one."""
+    under 3 words wait for the next one, unless a ticket URL alone names the session."""
     mode = mode or configured_mode()
-    text = prefilter.prepare(prompt)
-    title = generate(text, WORDS[mode]) if len(text.split()) >= 3 else None
-    if title and mode == "slug":
-        title = slugify(title)
-    return title or None
+    prepared = prefilter.prepare(prompt)
+    if len(prepared.text.split()) < 3:
+        title = ""
+    else:
+        title = generate(prepared.text, WORDS[mode])
+        if not title:
+            return None
+    return name(title, prepared.ticket, mode) or None
 
 
 def main(args):

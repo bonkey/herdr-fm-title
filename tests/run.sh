@@ -129,6 +129,25 @@ check "fm-title: a slug is lowercase ASCII" t_slug_ascii
 check "fm-title: a slug keeps whole words within 24 characters" t_slug_long
 check "fm-title: an unknown --mode gives no title" t_mode_bogus
 
+# --- fm-title: tickets -----------------------------------------------------------------------
+LINEAR='the slash probe checks fail, see https://linear.app/acme/issue/ENG-42/probe-fails'
+GITHUB='look at https://github.com/bonkey/herdr-fm-title/pull/12 login crash on ipad'
+t_url_ticket() { reset; use_stub; out=$(STUB_REPLY='Slash Probe Checks Fail' fm_title "$LINEAR") &&
+  eq "$out" "eng-42-slash-probe-checks" && eq "$(sed -n 3p "$T/stdin")" "the slash probe checks fail, see" &&
+  eq "$(STUB_REPLY='Slash Probe Checks Fail' fm_title "$LINEAR" --mode title)" "ENG-42 Slash Probe Checks Fail"; }
+t_url_github() { reset; use_stub; eq "$(STUB_REPLY='Login Crash Fix' fm_title "$GITHUB")" "herdr-fm-title-12-login-crash-fix" &&
+  eq "$(STUB_REPLY='Login Crash Fix' fm_title "$GITHUB" --mode title)" "herdr-fm-title#12 Login Crash Fix"; }
+t_url_only() { reset; use_stub; eq "$(fm_title 'https://linear.app/acme/issue/ENG-42/probe-fails')" "eng-42" &&
+  eq "$(fm_title 'see https://linear.app/acme/issue/ENG-42/probe-fails' --mode title)" "ENG-42" && eq "$(calls)" 0; }
+t_url_plain() { reset; use_stub; ! fm_title 'fix https://example.com/docs/page crash' && eq "$(calls)" 0; }
+t_ticket_echo() { reset; use_stub; eq "$(STUB_REPLY='ENG-42 Probe Fix' fm_title "$LINEAR")" "eng-42-probe-fix" &&
+  eq "$(STUB_REPLY='Fix #12 Login Crash' fm_title "$GITHUB" --mode title)" "herdr-fm-title#12 Fix Login Crash"; }
+check "fm-title: a ticket URL prefixes its key, and the model never sees the URL" t_url_ticket
+check "fm-title: a GitHub issue or PR URL prefixes repo#number" t_url_github
+check "fm-title: a ticket URL with too little text names the session after the ticket" t_url_only
+check "fm-title: a URL without a ticket is dropped like any other" t_url_plain
+check "fm-title: the ticket is not repeated when the model echoes it" t_ticket_echo
+
 # --- fm-title: backend order -----------------------------------------------------------------
 fm_shim() { # fm_shim available|unavailable
   cat >"$T/bin/fm" <<EOF

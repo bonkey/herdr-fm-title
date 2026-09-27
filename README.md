@@ -13,7 +13,10 @@ where the agent supports it, the agent's own session name.
 | OpenCode V2 ≥ 2.0.8 | yes | yes (replaces its title model) | `/rename`, immediately |
 | Codex ≥ 0.157 | yes | no, Codex keeps its own title | no |
 
-The prompt never leaves the machine. Prompts under 3 words wait for the next one.
+The prompt never leaves the machine. URLs are left out of what the model reads, but a ticket URL
+names the ticket: a Linear, Jira or similar link to `ENG-42` gives `eng-42-…`, a GitHub issue or
+pull request gives `repo-12-…`. Prompts under 3 words wait for the next one, unless they carry a
+ticket URL, which then names the session on its own.
 
 ## Requirements
 

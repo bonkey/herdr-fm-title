@@ -183,8 +183,14 @@ The mode applies everywhere the title goes: tab, Claude's `sessionTitle`, OpenCo
 1. **Prepare the text:**
    - remove `<pasted_content …>` … `</pasted_content …>` blocks;
    - for a slash command, keep only its arguments. A slash command is a prompt that starts with `/<name>` followed by a space or the end, where `<name>` contains no `/`. So `/code-review spec.md` is a command and `/Users/…` is not. A bare command counts as no text;
+   - remove URLs (`http://` or `https://`, up to whitespace or `<>"'`, without trailing `).,`), with the `<>` or `()` around them, so `[text](url)` keeps `text`. The first URL that names a ticket gives **the ticket**:
+     - a GitHub issue or pull request, `github.com/<owner>/<repo>/(issues|pull)/<n>`, gives `repo#n`;
+     - any other URL gives its first path segment or query value that is a key like `ENG-42` (`[A-Z][A-Z0-9]{1,9}-[0-9]+`). This covers Linear `/issue/ENG-42/…`, Jira `/browse/PROJ-7` or `?selectedIssue=PROJ-7`, YouTrack and similar;
+     - keys whose prefix names an encoding, hash, standard or model are no tickets: UTF, UCS, SHA, MD, CRC, ISO, IEC, IEEE, RFC, CVE, CWE, GPT, AES, RSA, DES, ECMA, ES, HTTP, TLS, SSL, COVID, WCAG, PEP, BASE, X86, ARM;
    - collapse whitespace and cut to 1500 characters;
-   - fewer than 3 words → exit 1.
+   - fewer than 3 words → the ticket alone is the name, with no model call; without a ticket, exit 1.
+
+   The ticket goes in front of the name: `ENG-42 Slash Probe Checks Fail` in `title` mode, `eng-42-slash-probe-checks` in `slug` mode, where `repo#12` becomes `repo-12`. Words of the model's reply that repeat the ticket (`ENG-42`, or `#12`) are dropped. Like any name, a ticket-only name is kept by the marker; `/rename` still changes it.
 2. **Pick the backend**, using the first that works:
    1. **`fm`**, when `command -v fm` succeeds and `fm available` exits 0: `fm respond -i "$INSTR" --no-stream -g`. The text goes on stdin quoted, as `Task:` followed by the text between `"""` lines, so the model summarizes it instead of obeying requests in it.
    2. **`${XDG_CACHE_HOME:-~/.cache}/herdr-fm-title/bin/title`**, compiled from `title.swift`. It uses the same interface: `-i INSTR`, text on stdin, reply on stdout, exit 2 when the model is unavailable.
