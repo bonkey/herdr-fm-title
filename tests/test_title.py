@@ -2,9 +2,10 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime"))
-from herdr_fm_title import title
+from herdr_fm_title import herdr, title
 
 
 class Slugify(unittest.TestCase):
@@ -19,10 +20,19 @@ class Slugify(unittest.TestCase):
             ("spec.md Updated", "spec-md-updated"),
             ("Supercalifragilistic Internationalizatio", "supercalifragilistic"),
             ("Supercalifragilisticexpialidocious Fix", "supercalifragilisticexpi"),
+            ("Исправить Сбой Входа", "исправить-сбой-входа"),
             ("For The", ""),
         ]:
             with self.subTest(given=given):
                 self.assertEqual(title.slugify(given), want)
+
+
+
+class SetTitle(unittest.TestCase):
+    def test_a_failed_spawn_is_ignored(self):
+        env = {"HERDR_ENV": "1", "HERDR_PANE_ID": "p1", "HERDR_BIN_PATH": "/nonexistent/herdr"}
+        with mock.patch.dict(os.environ, env), mock.patch.object(herdr.common, "detach", side_effect=OSError):
+            herdr.set_title("claude", "login-crash-fix")
 
 
 if __name__ == "__main__":

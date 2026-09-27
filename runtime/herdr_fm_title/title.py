@@ -127,12 +127,16 @@ def clean(reply):
     return TRAILING_JUNK.sub("", LEADING_JUNK.sub("", title[:MAX_CHARS]))
 
 
+def slug_words(text, junk):
+    words = [re.sub(junk, "-", w.replace("'", "").replace("’", "")).strip("-_") for w in text.lower().split()]
+    return [w for w in words if w and w not in SMALL][:SLUG_WORDS]
+
+
 def slugify(title):
     """Lowercase ASCII words without small words, joined with "-": at most 3 words and 24
-    characters, cut on a word boundary."""
-    text = unicodedata.normalize("NFKD", title.translate(LATIN)).encode("ascii", "ignore").decode()
-    words = [re.sub(r"[^a-z0-9]+", "-", w.replace("'", "")).strip("-") for w in text.lower().split()]
-    words = [w for w in words if w and w not in SMALL][:SLUG_WORDS]
+    characters, cut on a word boundary. A title with nothing in ASCII keeps its own letters."""
+    ascii_text = unicodedata.normalize("NFKD", title.translate(LATIN)).encode("ascii", "ignore").decode()
+    words = slug_words(ascii_text, r"[^a-z0-9]+") or slug_words(title, r"\W+")
     slug = ""
     for word in words:
         if len(slug) + bool(slug) + len(word) > SLUG_CHARS:

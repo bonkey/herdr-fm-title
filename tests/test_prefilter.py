@@ -23,14 +23,23 @@ class UrlTickets(unittest.TestCase):
             ("see https://example.com/docs, then https://linear.app/a/issue/ENG-1/x and "
              "https://linear.app/a/issue/ENG-2/y", "ENG-1"),
             ("see github.com/bonkey/herdr-fm-title/pull/12", None),
+            ("PR https://github.com/bonkey/herdr-fm-title/pull/12: address review comments", "herdr-fm-title#12"),
+            ("see `https://github.com/bonkey/herdr-fm-title/pull/12` for the crash", "herdr-fm-title#12"),
+            ("see https://acme.atlassian.net/browse/PROJ-7; then", "PROJ-7"),
+            ("see https://acme.atlassian.net/browse/PROJ-7!", "PROJ-7"),
+            ("see **https://linear.app/acme/issue/ENG-42** now", "ENG-42"),
+            ("[https://linear.app/a/issue/ENG-3/x](https://linear.app/a/issue/ENG-3/x) please", "ENG-3"),
         ]:
             with self.subTest(prompt=prompt):
                 self.assertEqual(prefilter.prepare(prompt).ticket, want)
 
     def test_urls_are_removed(self):
         for prompt, want in [
-            ("fix the crash, see https://linear.app/acme/issue/ENG-42/probe-fails.", "fix the crash, see ."),
-            ("the [login doc](https://acme.dev/login) is wrong", "the [login doc] is wrong"),
+            ("fix the crash, see https://linear.app/acme/issue/ENG-42/probe-fails.", "fix the crash, see"),
+            ("the [login doc](https://acme.dev/login) is wrong", "the login doc is wrong"),
+            ("see `https://github.com/bonkey/herdr-fm-title/pull/12` for the crash", "see for the crash"),
+            ("[https://linear.app/a/issue/ENG-3/x](https://linear.app/a/issue/ENG-3/x) please", "please"),
+            ("call foo() and bar<T> via:https://x.y/z", "call foo() and bar<T> via:"),
             ("read <https://acme.dev/a?b=c> and http://x.y/z too", "read and too"),
             ("/review https://github.com/bonkey/herdr-fm-title/pull/12", ""),
         ]:

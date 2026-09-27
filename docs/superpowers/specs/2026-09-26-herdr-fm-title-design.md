@@ -183,7 +183,7 @@ The mode applies everywhere the title goes: tab, Claude's `sessionTitle`, OpenCo
 1. **Prepare the text:**
    - remove `<pasted_content …>` … `</pasted_content …>` blocks;
    - for a slash command, keep only its arguments. A slash command is a prompt that starts with `/<name>` followed by a space or the end, where `<name>` contains no `/`. So `/code-review spec.md` is a command and `/Users/…` is not. A bare command counts as no text;
-   - remove URLs (`http://` or `https://`, up to whitespace or `<>"'`, without trailing `).,`), with the `<>` or `()` around them, so `[text](url)` keeps `text`. The first URL that names a ticket gives **the ticket**:
+   - remove URLs (`http://` or `https://`, up to whitespace or ``<>"'`[]``, without trailing `).,;:!?*`), together with punctuation that only wraps them, as in `` `url` ``, `<url>`, `**url**` or `url:`. A markdown link `[text](url)` keeps `text`. The first URL that names a ticket gives **the ticket**:
      - a GitHub issue or pull request, `github.com/<owner>/<repo>/(issues|pull)/<n>`, gives `repo#n`;
      - any other URL gives its first path segment or query value that is a key like `ENG-42` (`[A-Z][A-Z0-9]{1,9}-[0-9]+`). This covers Linear `/issue/ENG-42/…`, Jira `/browse/PROJ-7` or `?selectedIssue=PROJ-7`, YouTrack and similar;
      - keys whose prefix names an encoding, hash, standard, spec or model are no tickets: UTF, UCS, SHA, MD, CRC, ISO, IEC, IEEE, RFC, CVE, CWE, GPT, AES, RSA, DES, ECMA, ES, HTTP, TLS, SSL, COVID, WCAG, PEP, JSR, JEP, BASE, X86, ARM, USB, WPA, SQL, SOC, FIPS, NIST;
@@ -226,6 +226,8 @@ The mode applies everywhere the title goes: tab, Claude's `sessionTitle`, OpenCo
    2. drop apostrophes, and turn other runs of non-alphanumerics inside a word into `-`;
    3. drop every small word;
    4. keep at most 3 words and 24 characters, cut on a word boundary.
+
+   A title with no ASCII letters at all keeps its own lowercase letters instead (`исправить-сбой-входа`).
 
    The model often ignores "at most 3 words" (4 of 6 probes), so the cut is deterministic. For example, "Session Duration And Cost Display" becomes `session-duration-cost`.
 

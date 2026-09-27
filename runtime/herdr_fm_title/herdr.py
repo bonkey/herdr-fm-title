@@ -50,8 +50,11 @@ def set_title(agent, title):
         return
     if agent_in_pane(pane_id) == agent:
         report(pane_id, agent, title)
-    else:
+        return
+    try:
         common.detach([BIN, "--wait", agent, title])
+    except OSError:
+        pass
 
 
 def wait_and_report(agent, title):

@@ -1,6 +1,7 @@
 """Turns a raw prompt into the text the model summarizes, and the ticket it refers to."""
 import collections
 import re
+import string
 from urllib.parse import parse_qsl, urlsplit
 
 PASTED_START = re.compile(r"<pasted_content[ >]")
@@ -10,9 +11,9 @@ SPACE = re.compile(r"\s+", re.ASCII)
 SLASH_COMMAND = re.compile(r"^/[^/ ]+(?: |$)")
 MAX_CHARS = 1500
 
-# A URL, with the <> or () around it: <url>, (url), [text](url).
-URL = re.compile(r"<https?://[^\s<>\"']+>|\(?https?://[^\s<>\"']+", re.ASCII)
-URL_TRAILER = ").,"
+MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\((https?://[^)\s]*)\)")
+URL = re.compile(r"https?://[^\s<>\"'`\[\]]+", re.ASCII)
+URL_TRAILER = ").,;:!?*"
 KEY = re.compile(r"[A-Z][A-Z0-9]{1,9}-[0-9]+\Z")
 BARE_KEY = re.compile(r"\b[A-Z][A-Z0-9]{1,9}-[0-9]+\b", re.ASCII)
 # Prefixes of names that look like ticket keys: encodings, hashes, standards, specs, models. The
@@ -59,27 +60,18 @@ def url_ticket(url):
 
 def prepare(raw):
     """Pasted blocks and URLs go, whitespace collapses, a slash command keeps its arguments, and
-    the text is cut to 1500 characters. The ticket comes from the first URL that has one; without
-    one, the keys left in the text are candidates."""
+    the text is cut to 1500 characters. A markdown link keeps its text, and a URL goes with the
+    punctuation around it (`url`, <url>, url:). The ticket comes from the first URL that has one;
+    without one, the keys left in the text are candidates."""
     text = SPACE.sub(" ", drop_pasted(raw)).strip(" ")
-    text = SLASH_COMMAND.sub("", text, count=1)
-    tickets = []
-
-    def drop_url(m):
-        found = m.group(0)
-        if found.startswith("<"):
-            tickets.append(url_ticket(found[1:-1]))
-            return ""
-        opened = found.startswith("(")
-        body = found[opened:]
-        url = body.rstrip(URL_TRAILER)
-        tickets.append(url_ticket(url))
-        rest = body[len(url):]
-        if opened and rest.startswith(")"):
-            return rest[1:]
-        return "(" * opened + rest
-    text = SPACE.sub(" ", URL.sub(drop_url, text)).strip(" ")
-    text = text[:MAX_CHARS]
+    text = MARKDOWN_LINK.sub(r"\1 \2", SLASH_COMMAND.sub("", text, count=1))
+    tickets, kept = [], []
+    for word in text.split(" "):
+        tickets += [url_ticket(url.rstrip(URL_TRAILER)) for url in URL.findall(word)]
+        rest = URL.sub("", word)
+        if rest.strip(string.punctuation):
+            kept.append(rest)
+    text = SPACE.sub(" ", " ".join(kept)).strip(" ")[:MAX_CHARS]
     ticket = next((t for t in tickets if t), None)
     candidates = [] if ticket else [k for k in dict.fromkeys(BARE_KEY.findall(text)) if is_key(k)]
     return Prepared(text, ticket, candidates)
