@@ -222,6 +222,12 @@ check "hook claude: a transcript path without .jsonl finds its sidecar" t_c_nosu
 check "hook claude: non-string fields and non-object input do nothing" t_c_nonstring
 check "hook: markers over 30 days old are pruned, at most once a day" t_prune
 
+t_nopython() { reset; use_stub; in_herdr
+  out=$(HERDR_FM_TITLE_PYTHON=/nonexistent hook claude "$(ups s1 'fix the login crash on ipad')"); rc=$?
+  eq "$rc $out" "0 " && ! printf 'fix the login crash on ipad' | HERDR_FM_TITLE_PYTHON=/nonexistent "$repo/runtime/bin/fm-title" &&
+    HERDR_FM_TITLE_PYTHON=/nonexistent "$repo/runtime/bin/herdr-title" claude "Title" && [ ! -e "$T/herdr.log" ]; }
+check "without Python the entry points do nothing and never exit 2" t_nopython
+
 # --- hook codex ------------------------------------------------------------------------------
 t_x_first() { reset; use_stub; in_herdr codex; out=$(hook codex "$(ups s1 'fix the login crash on ipad')") && eq "$out" "" &&
   eq "$(marker codex-s1)" "Stub Title" && grep -q -- '--agent codex --title Stub Title' "$T/herdr.log"; }

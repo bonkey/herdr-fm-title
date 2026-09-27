@@ -17,6 +17,12 @@ def run(argv):
         if command == "fm-title":
             from herdr_fm_title import title
             return title.main(argv[2:])
+        if command == "hook":
+            from herdr_fm_title import hook
+            return hook.main(argv[2:])
+        if command == "herdr-title":
+            from herdr_fm_title import herdr
+            return herdr.main(argv[2:])
     except BaseException as e:
         try:
             from herdr_fm_title import common

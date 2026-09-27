@@ -1,28 +1,13 @@
 #!/bin/sh
-# herdr-title <agent> <title> — sets the herdr pane metadata title, which auto-title shows as the
-# tab label. `--agent` keeps the title only while that agent runs in the pane. Outside herdr it
-# does nothing, and it never fails the caller.
+# herdr-title [--wait] <agent> <title> — sets the herdr pane metadata title (see
+# herdr_fm_title/herdr.py). Never fails the caller.
 #
-# herdr drops a guarded report until it has recognized the agent in the pane, which happens a few
-# seconds after the agent starts, so a SessionStart hook is too early. Then a detached copy
-# (--wait) reports once herdr shows the agent, for up to 15 s, and no hook is held up.
-[ "${HERDR_ENV:-}" = 1 ] && [ -n "${HERDR_PANE_ID:-}" ] || exit 0
-herdr=${HERDR_BIN_PATH:-herdr}
-wait=""
-[ "${1:-}" = --wait ] && { wait=1; shift; }
-agent=${1:-} title=${2:-}
-[ -n "$agent" ] && [ -n "$title" ] || exit 0
-
-report() { "$herdr" pane report-metadata "$HERDR_PANE_ID" --source plugin:bonkey.fm-title --agent "$agent" --title "$title" >/dev/null 2>&1; }
-agent_in_pane() { "$herdr" pane get "$HERDR_PANE_ID" 2>/dev/null | jq -r '.result.pane.agent // empty' 2>/dev/null; }
-
-if [ -n "$wait" ]; then
-  i=0
-  while [ $i -lt 30 ] && [ "$(agent_in_pane)" != "$agent" ]; do sleep 0.5; i=$((i + 1)); done
-  report
-elif ! command -v jq >/dev/null 2>&1 || [ "$(agent_in_pane)" = "$agent" ]; then
-  report
-else
-  nohup "$0" --wait "$agent" "$title" </dev/null >/dev/null 2>&1 &
-fi
-exit 0
+# The bin/ entry points stay sh: Python exits 2 when it can't run a file, and Claude reads a
+# prompt hook's exit 2 as "block this prompt". The interpreter is the one install pinned in
+# ../python; HERDR_FM_TITLE_PYTHON overrides it.
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+py=${HERDR_FM_TITLE_PYTHON:-}
+[ -n "$py" ] || read -r py 2>/dev/null <"$root/python"
+[ -n "$py" ] || py=$(command -v python3)
+[ -x "$py" ] && [ -f "$root/main.py" ] || exit 0
+exec "$py" -I -S -X pycache_prefix="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-fm-title/pycache" "$root/main.py" herdr-title "$@"

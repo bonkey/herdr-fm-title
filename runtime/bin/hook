@@ -1,61 +1,13 @@
 #!/bin/sh
-# hook <claude|codex> — agent hook entry point; the hook JSON arrives on stdin.
+# hook <claude|codex> — agent hook entry point; the hook JSON arrives on stdin (see
+# herdr_fm_title/hook.py).
 #
-# A marker file per session (<agent>-<session_id>, holding the title) means the session is named:
-# no title is ever generated for it again, which is what keeps a user's own name safe.
-# Claude: the first real prompt names the session (sessionTitle) and the tab; later prompts carry
-#         a /rename to the tab through Claude's custom-title.json sidecar.
-# Codex:  runs async and must print nothing (stdout would reach the model); tab only. Every
-#         prompt of a named session re-reports its title, which also covers a resumed session.
-set -u
-agent=${1:-}
-bin=$(cd "$(dirname "$0")" && pwd -P)
-named=${XDG_STATE_HOME:-$HOME/.local/state}/herdr-fm-title/named
-command -v jq >/dev/null 2>&1 || exit 0
-
-input=$(cat)
-field() { printf '%s' "$input" | jq -r --arg k "$1" '.[$k] // empty | strings' 2>/dev/null; }
-event=$(field hook_event_name)
-sid=$(field session_id)
-case $sid in "" | *[!A-Za-z0-9_-]*) exit 0 ;; esac
-mkdir -p "$named" 2>/dev/null || exit 0
-marker="$named/$agent-$sid"
-
-# Markers older than 30 days go, checked at most once a day.
-stamp="$named/.pruned"
-if [ -z "$(find "$stamp" -mtime -1 2>/dev/null)" ]; then
-  find "$named" -type f ! -name .pruned -mtime +30 -delete 2>/dev/null
-  : >"$stamp"
-fi
-
-name() { printf '%s\n' "$1" >"$marker"; "$bin/herdr-title" "$agent" "$1"; }
-
-case $agent:$event in
-claude:SessionStart)
-  title=$(field session_title)
-  [ -n "$title" ] && name "$title"
-  ;;
-claude:UserPromptSubmit)
-  transcript=$(field transcript_path)
-  current=""
-  [ -n "$transcript" ] && current=$(jq -r '.customTitle // empty | strings' "${transcript%.jsonl}/custom-title.json" 2>/dev/null)
-  if [ -f "$marker" ] || [ -n "$current" ]; then
-    [ -n "$current" ] && name "$current"
-    exit 0
-  fi
-  title=$(field prompt | "$bin/fm-title") || exit 0
-  name "$title"
-  jq -cn --arg t "$title" '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", sessionTitle: $t}}'
-  ;;
-codex:UserPromptSubmit)
-  # Codex fires SessionStart for a resumed session only with its first new prompt, so the prompt
-  # hook alone brings a stored title back.
-  if [ -f "$marker" ]; then
-    "$bin/herdr-title" codex "$(cat "$marker")"
-    exit 0
-  fi
-  title=$(field prompt | "$bin/fm-title") || exit 0
-  name "$title"
-  ;;
-esac
-exit 0
+# The bin/ entry points stay sh: Python exits 2 when it can't run a file, and Claude reads a
+# prompt hook's exit 2 as "block this prompt". The interpreter is the one install pinned in
+# ../python; HERDR_FM_TITLE_PYTHON overrides it.
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+py=${HERDR_FM_TITLE_PYTHON:-}
+[ -n "$py" ] || read -r py 2>/dev/null <"$root/python"
+[ -n "$py" ] || py=$(command -v python3)
+[ -x "$py" ] && [ -f "$root/main.py" ] || exit 0
+exec "$py" -I -S -X pycache_prefix="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-fm-title/pycache" "$root/main.py" hook "$@"

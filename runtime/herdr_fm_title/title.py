@@ -130,9 +130,14 @@ def generate(text):
     return title or None
 
 
+def title_for(prompt):
+    """The title for a raw prompt, or None. Prompts under 3 words wait for the next one."""
+    text = prefilter.prepare(prompt)
+    return generate(text) if len(text.split()) >= 3 else None
+
+
 def main(args):
-    text = prefilter.prepare(sys.stdin.buffer.read().decode("utf-8", "ignore"))
-    title = generate(text) if len(text.split()) >= 3 else None
+    title = title_for(sys.stdin.buffer.read().decode("utf-8", "ignore"))
     if not title:
         return 1
     sys.stdout.buffer.write((title + "\n").encode())
